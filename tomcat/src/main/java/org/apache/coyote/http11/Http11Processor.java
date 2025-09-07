@@ -4,13 +4,11 @@ import com.techcourse.db.InMemoryUserRepository;
 import com.techcourse.exception.UncheckedServletException;
 import com.techcourse.model.User;
 import java.io.BufferedReader;
-import java.io.File;
+import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.coyote.Processor;
 import org.slf4j.Logger;
@@ -39,7 +37,7 @@ public class Http11Processor implements Runnable, Processor {
     public void process(final Socket connection) {
         try (final var inputStream = connection.getInputStream();
              final var outputStream = connection.getOutputStream();
-             final var bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
+             final var bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.ISO_8859_1))) {
 
             final String startLine = readRequestLine(bufferedReader);
             final String httpPath = extractHttpPath(startLine);
@@ -50,7 +48,7 @@ public class Http11Processor implements Runnable, Processor {
 
             String response = buildResponse(httpPath);
 
-            outputStream.write(response.getBytes());
+            outputStream.write(response.getBytes(StandardCharsets.UTF_8));
             outputStream.flush();
         } catch (IOException | UncheckedServletException e) {
             log.error(e.getMessage(), e);
@@ -58,12 +56,22 @@ public class Http11Processor implements Runnable, Processor {
     }
 
     private String readRequestLine(BufferedReader bufferedReader) throws IOException {
-        return bufferedReader.readLine();
+        String startLine = bufferedReader.readLine();
+        if (startLine == null || startLine.trim().isEmpty()) {
+            throw new IllegalArgumentException("Invalid request: empty start line");
+        }
+        return startLine;
     }
 
     private String extractHttpPath(String startLine) {
-        final String[] startLineElements = startLine.split(" ");
-        return startLineElements[1];
+        int firstSpace = startLine.indexOf(' ');
+        int lastSpace = startLine.lastIndexOf(' ');
+        
+        if (firstSpace == -1 || lastSpace == -1 || firstSpace == lastSpace) {
+            throw new IllegalArgumentException("Invalid HTTP request format: " + startLine);
+        }
+        
+        return startLine.substring(firstSpace + 1, lastSpace);
     }
 
     private String buildResponse(String httpPath) throws IOException {
@@ -93,40 +101,42 @@ public class Http11Processor implements Runnable, Processor {
 
     private String handleStaticFileRequest(String httpPath) throws IOException {
         String filePath = httpPath.startsWith("/") ? httpPath.substring(1) : httpPath;
-        URL resource = getClass().getClassLoader().getResource("static/" + filePath);
-
-        if (resource == null) {
-            return buildNotFoundResponse();
-        } else {
-            return buildStaticFileResponse(resource, filePath);
+        
+        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/" + filePath)) {
+            if (inputStream == null) {
+                return buildNotFoundResponse();
+            } else {
+                return buildStaticFileResponse(inputStream, filePath);
+            }
         }
     }
 
     private String buildNotFoundResponse() throws IOException {
-        URL notFoundResource = getClass().getClassLoader().getResource("static/404.html");
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
-        if (notFoundResource == null || notFoundResource.getPath() == null) {
-            String responseBody = "<html><body><h1>404 Not Found</h1></body></html>";
-            return responseBuilder("404", "Not Found", headers, responseBody);
-        } else {
-            Path path = new File(notFoundResource.getPath()).toPath();
-            List<String> contents = Files.readAllLines(path);
-            String responseBody = String.join("\n", contents);
-            return responseBuilder("404", "Not Found", headers, responseBody);
+        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/404.html")) {
+            if (inputStream == null) {
+                String responseBody = "<html><body><h1>404 Not Found</h1></body></html>";
+                return responseBuilder("404", "Not Found", headers, responseBody);
+            } else {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    String responseBody = reader.lines().collect(Collectors.joining("\n"));
+                    return responseBuilder("404", "Not Found", headers, responseBody);
+                }
+            }
         }
     }
 
-    private String buildStaticFileResponse(URL resource, String filePath) throws IOException {
-        Path path = new File(resource.getPath()).toPath();
-        List<String> contents = Files.readAllLines(path);
-        String responseBody = String.join("\n", contents);
-        responseBody += "\n";
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", getContentType(filePath));
+    private String buildStaticFileResponse(InputStream inputStream, String filePath) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String responseBody = reader.lines().collect(Collectors.joining("\n"));
+            responseBody += "\n";
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Content-Type", getContentType(filePath));
 
-        return responseBuilder("200", "OK", headers, responseBody);
+            return responseBuilder("200", "OK", headers, responseBody);
+        }
     }
 
     private String handleLoginRequest(String httpPath) throws IOException {
@@ -143,18 +153,19 @@ public class Http11Processor implements Runnable, Processor {
             }
         }
 
-        URL loginResource = getClass().getClassLoader().getResource("static/login.html");
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
-        if (loginResource == null) {
-            String responseBody = "<html><body><h1>Login Page Not Found</h1></body></html>";
-            return responseBuilder("404", "Not Found", headers, responseBody);
-        } else {
-            Path path = new File(loginResource.getPath()).toPath();
-            List<String> contents = Files.readAllLines(path);
-            String responseBody = String.join("\n", contents);
-            return responseBuilder("200", "OK", headers, responseBody);
+        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/login.html")) {
+            if (inputStream == null) {
+                String responseBody = "<html><body><h1>Login Page Not Found</h1></body></html>";
+                return responseBuilder("404", "Not Found", headers, responseBody);
+            } else {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    String responseBody = reader.lines().collect(Collectors.joining("\n"));
+                    return responseBuilder("200", "OK", headers, responseBody);
+                }
+            }
         }
     }
 
@@ -188,7 +199,7 @@ public class Http11Processor implements Runnable, Processor {
                 response.append(entry.getKey()).append(": ").append(entry.getValue()).append("\r\n");
             }
         }
-        response.append("Content-Length: ").append(responseBody.getBytes().length).append("\r\n");
+        response.append("Content-Length: ").append(responseBody.getBytes(StandardCharsets.UTF_8).length).append("\r\n");
         response.append("\r\n");
         response.append(responseBody);
 
