@@ -102,7 +102,8 @@ public class Http11Processor implements Runnable, Processor {
     }
 
     private User getCurrentUser(HttpRequest request) {
-        String sessionId = getSessionIdFromRequest(request);
+        HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
+        String sessionId = cookie.getJSessionId();
         if (sessionId != null) {
             return InMemorySessionRepository.findBySessionId(sessionId).orElse(null);
         }
@@ -123,8 +124,8 @@ public class Http11Processor implements Runnable, Processor {
     }
 
     private HttpResponse ensureSessionCookie(HttpRequest request, HttpResponse response) {
-        String sessionId = getSessionIdFromRequest(request);
-        if (sessionId == null) {
+        HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
+        if (!cookie.hasJSessionId()) {
             String newSessionId = UUID.randomUUID().toString();
             Map<String, String> newHeaders = new HashMap<>(response.headers());
             newHeaders.put("Set-Cookie", "JSESSIONID=" + newSessionId);
@@ -268,31 +269,6 @@ public class Http11Processor implements Runnable, Processor {
     }
 
 
-    private String getSessionIdFromRequest(HttpRequest request) {
-        String cookieHeader = request.headers().get("Cookie");
-        if (cookieHeader == null) {
-            return null;
-        }
-
-        Map<String, String> cookies = parseCookies(cookieHeader);
-        return cookies.get("JSESSIONID");
-    }
-
-    private Map<String, String> parseCookies(String cookieHeader) {
-        Map<String, String> cookies = new HashMap<>();
-        if (cookieHeader == null || cookieHeader.trim().isEmpty()) {
-            return cookies;
-        }
-
-        String[] pairs = cookieHeader.split(";");
-        for (String pair : pairs) {
-            String[] keyValue = pair.trim().split("=", 2);
-            if (keyValue.length == 2) {
-                cookies.put(keyValue[0].trim(), keyValue[1].trim());
-            }
-        }
-        return cookies;
-    }
 
     private String createSession(User user) {
         String sessionId = UUID.randomUUID().toString();
