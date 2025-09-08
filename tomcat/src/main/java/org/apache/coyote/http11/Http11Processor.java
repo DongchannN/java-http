@@ -58,7 +58,13 @@ public class Http11Processor implements Runnable, Processor {
         if (isRootPath(requestTarget)) {
             return buildRootResponse();
         } else if (isLoginPath(requestTarget)) {
-            return handleLoginRequest(request);
+            if (request.method().equals("GET") && request.parseQueryString().isEmpty()) {
+                return handleStaticFileRequest(requestTarget + ".html");
+            } else if (request.method().equals("POST") || !request.parseQueryString().isEmpty()) {
+                return handleLoginRequest(request);
+            } else {
+                return buildNotFoundResponse();
+            }
         } else {
             return handleStaticFileRequest(requestTarget);
         }
@@ -134,6 +140,9 @@ public class Http11Processor implements Runnable, Processor {
                 User user = InMemoryUserRepository.findByAccount(account).orElseThrow();
                 if (user.checkPassword(password)) {
                     log.info("로그인 성공: {}", user);
+                    Map<String, String> headers = new HashMap<>();
+                    headers.put("Location", "/index.html");
+                    return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
                 }
             }
         }
@@ -141,7 +150,7 @@ public class Http11Processor implements Runnable, Processor {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
-        try (InputStream inputStream = HttpResponse.class.getClassLoader().getResourceAsStream("static/login.html")) {
+        try (InputStream inputStream = HttpResponse.class.getClassLoader().getResourceAsStream("static/401.html")) {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>Login Page Not Found</h1></body></html>";
                 return new HttpResponse("HTTP/1.1", 404, "Not Found", headers, responseBody);
@@ -151,7 +160,7 @@ public class Http11Processor implements Runnable, Processor {
                                 new InputStreamReader(inputStream, StandardCharsets.UTF_8))
                 ) {
                     String responseBody = reader.lines().collect(Collectors.joining("\n"));
-                    return new HttpResponse("HTTP/1.1", 200, "OK", headers, responseBody);
+                    return new HttpResponse("HTTP/1.1", 401, "Unauthorized", headers, responseBody);
                 }
             }
         }
