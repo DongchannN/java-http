@@ -11,6 +11,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.coyote.Processor;
 import org.slf4j.Logger;
@@ -154,6 +155,7 @@ public class Http11Processor implements Runnable, Processor {
                     log.info("로그인 성공: {}", user);
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Location", "/index.html");
+                    headers.put("Set-Cookie", makeVeryDeliciousCookie());
                     return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
                 }
             }
@@ -187,6 +189,7 @@ public class Http11Processor implements Runnable, Processor {
         InMemoryUserRepository.save(user);
         Map<String, String> headers = new HashMap<>();
         headers.put("Location", "/index.html");
+        headers.put("Set-Cookie", makeVeryDeliciousCookie());
         return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
     }
 
@@ -214,5 +217,11 @@ public class Http11Processor implements Runnable, Processor {
         }
 
         return formData;
+    }
+
+    private String makeVeryDeliciousCookie() {
+        final UUID deliciousCookie = UUID.randomUUID();
+        log.info("deliciousCookie = {}", deliciousCookie.toString());
+        return "JSESSIONID=" + deliciousCookie;
     }
 }
