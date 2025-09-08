@@ -26,7 +26,7 @@ public record HttpRequest(
         String version = parts[2];
         
         Map<String, String> headers = parseHeaders(bufferedReader);
-        String body = ""; // TODO: body 파싱 로직 구현
+        String body = parseBody(bufferedReader, headers);
         
         return new HttpRequest(method, requestTarget, version, headers, body);
     }
@@ -51,6 +51,36 @@ public record HttpRequest(
             }
         }
         return headers;
+    }
+
+    private static String parseBody(BufferedReader bufferedReader, Map<String, String> headers) throws IOException {
+        String contentLengthHeader = headers.get("Content-Length");
+        if (contentLengthHeader == null || contentLengthHeader.isEmpty()) {
+            return "";
+        }
+
+        try {
+            int contentLength = Integer.parseInt(contentLengthHeader);
+            if (contentLength <= 0) {
+                return "";
+            }
+
+            char[] buffer = new char[contentLength];
+            int totalRead = 0;
+
+            // Content-Length만큼 정확히 읽기
+            while (totalRead < contentLength) {
+                int read = bufferedReader.read(buffer, totalRead, contentLength - totalRead);
+                if (read == -1) {
+                    break; // EOF 도달
+                }
+                totalRead += read;
+            }
+
+            return new String(buffer, 0, totalRead);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid Content-Length header: " + contentLengthHeader);
+        }
     }
 
     public Map<String, String> parseQueryString() {

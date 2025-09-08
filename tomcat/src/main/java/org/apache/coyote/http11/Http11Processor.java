@@ -65,9 +65,21 @@ public class Http11Processor implements Runnable, Processor {
             } else {
                 return buildNotFoundResponse();
             }
+        } else if (isSignupPath(requestTarget)) {
+            if (request.method().equals("GET") && request.parseQueryString().isEmpty()) {
+                return handleStaticFileRequest(requestTarget + ".html");
+            } else if (request.method().equals("POST") || !request.parseQueryString().isEmpty()) {
+                return handleSignupRequest(request);
+            } else {
+                return buildNotFoundResponse();
+            }
         } else {
             return handleStaticFileRequest(requestTarget);
         }
+    }
+
+    private boolean isSignupPath(final String requestTarget) {
+        return requestTarget.startsWith("/register");
     }
 
     private boolean isRootPath(String requestTarget) {
@@ -166,10 +178,41 @@ public class Http11Processor implements Runnable, Processor {
         }
     }
 
+    private HttpResponse handleSignupRequest(final HttpRequest request) {
+        Map<String, String> params = parseFormBody(request);
+        String account = params.get("account");
+        String password = params.get("password");
+        String email = params.get("email");
+        User user = new User(account, password, email);
+        InMemoryUserRepository.save(user);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Location", "/index.html");
+        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+    }
+
     private String getContentType(String filePath) {
         if (filePath.endsWith(".css")) {
             return "text/css;charset=utf-8";
         }
         return "text/html;charset=utf-8";
+    }
+
+    public Map<String, String> parseFormBody(HttpRequest httpRequest) {
+        String body = httpRequest.body();
+        Map<String, String> formData = new HashMap<>();
+
+        if (body == null || body.isEmpty()) {
+            return formData;
+        }
+
+        String[] pairs = body.split("&");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2) {
+                formData.put(keyValue[0], keyValue[1]);
+            }
+        }
+
+        return formData;
     }
 }
