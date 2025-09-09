@@ -22,6 +22,10 @@ import org.slf4j.LoggerFactory;
 public class Http11Processor implements Runnable, Processor {
 
     private static final Logger log = LoggerFactory.getLogger(Http11Processor.class);
+    private static final String INDEX_PAGE = "/index.html";
+    private static final String LOGIN_FAILED_PAGE = "/401.html";
+    private static final String JSESSIONID = "JSESSIONID";
+    private static final String USER_ATTRIBUTE = "user";
 
     private final Socket connection;
 
@@ -64,22 +68,22 @@ public class Http11Processor implements Runnable, Processor {
             return buildRootResponse();
         } else if (isLoginPath(requestTarget)) {
             if (request.method().equals("GET") && currentUser != null) {
-                return buildRedirectResponse("/index.html");
+                return buildRedirectResponse(INDEX_PAGE);
             }
-            if (request.method().equals("GET") && request.parseQueryString().isEmpty()) {
+            if (request.method().equals("GET")) {
                 return handleStaticFileRequest(requestTarget + ".html");
-            } else if (request.method().equals("POST") || !request.parseQueryString().isEmpty()) {
+            } else if (request.method().equals("POST")) {
                 return handleLoginRequest(request);
             } else {
                 return buildNotFoundResponse();
             }
         } else if (isSignupPath(requestTarget)) {
             if (request.method().equals("GET") && currentUser != null) {
-                return buildRedirectResponse("/index.html");
+                return buildRedirectResponse(INDEX_PAGE);
             }
-            if (request.method().equals("GET") && request.parseQueryString().isEmpty()) {
+            if (request.method().equals("GET")) {
                 return handleStaticFileRequest(requestTarget + ".html");
-            } else if (request.method().equals("POST") || !request.parseQueryString().isEmpty()) {
+            } else if (request.method().equals("POST")) {
                 return handleSignupRequest(request);
             } else {
                 return buildNotFoundResponse();
@@ -90,10 +94,6 @@ public class Http11Processor implements Runnable, Processor {
         }
     }
 
-    private boolean isSignupPath(final String requestTarget) {
-        return requestTarget.startsWith("/register");
-    }
-
     private boolean isRootPath(String requestTarget) {
         return requestTarget.isEmpty() || requestTarget.equals("/");
     }
@@ -102,13 +102,17 @@ public class Http11Processor implements Runnable, Processor {
         return requestTarget.startsWith("/login");
     }
 
+    private boolean isSignupPath(final String requestTarget) {
+        return requestTarget.startsWith("/register");
+    }
+
     private User getCurrentUser(HttpRequest request) {
         HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
         String sessionId = cookie.getJSessionId();
         if (sessionId != null) {
             Session session = SessionManager.getSession(sessionId);
             if (session != null) {
-                return (User) session.getAttribute("user");
+                return (User) session.getAttribute(USER_ATTRIBUTE);
             }
         }
         return null;
@@ -132,7 +136,7 @@ public class Http11Processor implements Runnable, Processor {
         if (!cookie.hasJSessionId()) {
             String newSessionId = UUID.randomUUID().toString();
             Map<String, String> newHeaders = new HashMap<>(response.headers());
-            newHeaders.put("Set-Cookie", "JSESSIONID=" + newSessionId);
+            newHeaders.put("Set-Cookie", JSESSIONID + "=" + newSessionId);
             return new HttpResponse(response.version(), response.statusCode(), 
                     response.reasonPhrase(), newHeaders, response.body());
         }
@@ -182,52 +186,17 @@ public class Http11Processor implements Runnable, Processor {
         }
     }
 
-    private HttpResponse handleLoginRequest(HttpRequest request) throws IOException {
-        String requestTarget = request.requestTarget();
-
-        if (requestTarget.contains("?")) {
-            Map<String, String> queryParams = request.parseQueryString();
-            String account = queryParams.get("account");
-            String password = queryParams.get("password");
-
-            if (account != null && password != null) {
-                var userOptional = InMemoryUserRepository.findByAccount(account);
-                if (userOptional.isPresent() && userOptional.get().checkPassword(password)) {
-                    User user = userOptional.get();
-                    String sessionId = createSession(user);
-                    
-                    log.info("로그인 성공: {}", user);
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Location", "/index.html");
-                    headers.put("Set-Cookie", "JSESSIONID=" + sessionId);
-                    return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
-                }
-            }
+    private HttpResponse handleLoginRequest(HttpRequest request) {
+        Map<String, String> formData = parseFormBody(request);
+        String account = formData.get("account");
+        String password = formData.get("password");
+        
+        HttpResponse loginResponse = tryAuthenticate(account, password);
+        if (loginResponse != null) {
+            return loginResponse;
         }
 
-        if (request.method().equals("POST")) {
-            Map<String, String> formData = parseFormBody(request);
-            String account = formData.get("account");
-            String password = formData.get("password");
-
-            if (account != null && password != null) {
-                var userOptional = InMemoryUserRepository.findByAccount(account);
-                if (userOptional.isPresent() && userOptional.get().checkPassword(password)) {
-                    User user = userOptional.get();
-                    String sessionId = createSession(user);
-                    
-                    log.info("로그인 성공: {}", user);
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Location", "/index.html");
-                    headers.put("Set-Cookie", "JSESSIONID=" + sessionId);
-                    return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
-                }
-            }
-        }
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Location", "/401.html");
-        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+        return buildRedirectResponse(LOGIN_FAILED_PAGE);
     }
 
     private HttpResponse handleSignupRequest(final HttpRequest request) {
@@ -239,11 +208,7 @@ public class Http11Processor implements Runnable, Processor {
         InMemoryUserRepository.save(user);
         
         String sessionId = createSession(user);
-        
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Location", "/index.html");
-        headers.put("Set-Cookie", "JSESSIONID=" + sessionId);
-        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+        return buildLoginSuccessResponse(sessionId);
     }
 
     private String getContentType(String filePath) {
@@ -253,7 +218,7 @@ public class Http11Processor implements Runnable, Processor {
         return "text/html;charset=utf-8";
     }
 
-    public Map<String, String> parseFormBody(HttpRequest httpRequest) {
+    private Map<String, String> parseFormBody(HttpRequest httpRequest) {
         String body = httpRequest.body();
         Map<String, String> formData = new HashMap<>();
 
@@ -274,10 +239,30 @@ public class Http11Processor implements Runnable, Processor {
 
 
 
+    private HttpResponse tryAuthenticate(String account, String password) {
+        if (account != null && password != null) {
+            User user = InMemoryUserRepository.findByAccount(account).orElseThrow();
+            if (user.checkPassword(password)) {
+                String sessionId = createSession(user);
+                
+                log.info("로그인 성공: {}", user);
+                return buildLoginSuccessResponse(sessionId);
+            }
+        }
+        return null;
+    }
+
+    private HttpResponse buildLoginSuccessResponse(String sessionId) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Location", INDEX_PAGE);
+        headers.put("Set-Cookie", JSESSIONID + "=" + sessionId);
+        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+    }
+
     private String createSession(User user) {
         String sessionId = UUID.randomUUID().toString();
         Session session = new Session(sessionId);
-        session.setAttribute("user", user);
+        session.setAttribute(USER_ATTRIBUTE, user);
         SessionManager.add(session);
         log.info("세션 생성: sessionId={}, user={}", sessionId, user.getAccount());
         return sessionId;
