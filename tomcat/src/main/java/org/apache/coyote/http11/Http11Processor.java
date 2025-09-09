@@ -1,25 +1,31 @@
 package org.apache.coyote.http11;
 
+import org.apache.catalina.SessionManager;
 import com.techcourse.db.InMemoryUserRepository;
 import com.techcourse.exception.UncheckedServletException;
+import org.apache.catalina.Session;
 import com.techcourse.model.User;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.coyote.Processor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.net.Socket;
-
 public class Http11Processor implements Runnable, Processor {
 
     private static final Logger log = LoggerFactory.getLogger(Http11Processor.class);
+    private static final String INDEX_PAGE = "/index.html";
+    private static final String LOGIN_FAILED_PAGE = "/401.html";
+    private static final String JSESSIONID = "JSESSIONID";
+    private static final String USER_ATTRIBUTE = "user";
 
     private final Socket connection;
 
@@ -35,74 +41,112 @@ public class Http11Processor implements Runnable, Processor {
 
     @Override
     public void process(final Socket connection) {
-        try (final var inputStream = connection.getInputStream();
-             final var outputStream = connection.getOutputStream();
-             final var bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.ISO_8859_1))) {
+        try (
+                final var inputStream = connection.getInputStream();
+                final var outputStream = connection.getOutputStream();
+                final var bufferedReader = new BufferedReader(
+                        new InputStreamReader(inputStream, StandardCharsets.ISO_8859_1))
+        ) {
 
-            final String startLine = readRequestLine(bufferedReader);
-            final String httpPath = extractHttpPath(startLine);
-            String line;
-            while ((line = bufferedReader.readLine()) != null && !line.isEmpty()) {
-                // 지금 요구사항에서는 헤더들을 읽기만 하고 무시
-            }
+            HttpRequest request = HttpRequest.from(bufferedReader);
+            HttpResponse response = processHttpRequest(request);
+            String responseString = response.toResponseString();
 
-            String response = buildResponse(httpPath);
-
-            outputStream.write(response.getBytes(StandardCharsets.UTF_8));
+            outputStream.write(responseString.getBytes(StandardCharsets.UTF_8));
             outputStream.flush();
         } catch (IOException | UncheckedServletException e) {
             log.error(e.getMessage(), e);
         }
     }
 
-    private String readRequestLine(BufferedReader bufferedReader) throws IOException {
-        String startLine = bufferedReader.readLine();
-        if (startLine == null || startLine.trim().isEmpty()) {
-            throw new IllegalArgumentException("Invalid request: empty start line");
-        }
-        return startLine;
-    }
+    public HttpResponse processHttpRequest(HttpRequest request) throws IOException {
+        String requestTarget = request.requestTarget();
 
-    private String extractHttpPath(String startLine) {
-        int firstSpace = startLine.indexOf(' ');
-        int lastSpace = startLine.lastIndexOf(' ');
+        User currentUser = getCurrentUser(request);
         
-        if (firstSpace == -1 || lastSpace == -1 || firstSpace == lastSpace) {
-            throw new IllegalArgumentException("Invalid HTTP request format: " + startLine);
-        }
-        
-        return startLine.substring(firstSpace + 1, lastSpace);
-    }
-
-    private String buildResponse(String httpPath) throws IOException {
-        if (isRootPath(httpPath)) {
+        if (isRootPath(requestTarget)) {
             return buildRootResponse();
-        } else if (isLoginPath(httpPath)) {
-            return handleLoginRequest(httpPath);
+        } else if (isLoginPath(requestTarget)) {
+            if (request.method().equals("GET") && currentUser != null) {
+                return buildRedirectResponse(INDEX_PAGE);
+            }
+            if (request.method().equals("GET")) {
+                return handleStaticFileRequest(requestTarget + ".html");
+            } else if (request.method().equals("POST")) {
+                return handleLoginRequest(request);
+            } else {
+                return buildNotFoundResponse();
+            }
+        } else if (isSignupPath(requestTarget)) {
+            if (request.method().equals("GET") && currentUser != null) {
+                return buildRedirectResponse(INDEX_PAGE);
+            }
+            if (request.method().equals("GET")) {
+                return handleStaticFileRequest(requestTarget + ".html");
+            } else if (request.method().equals("POST")) {
+                return handleSignupRequest(request);
+            } else {
+                return buildNotFoundResponse();
+            }
         } else {
-            return handleStaticFileRequest(httpPath);
+            HttpResponse response = handleStaticFileRequest(requestTarget);
+            return ensureSessionCookie(request, response);
         }
     }
 
-    private boolean isRootPath(String httpPath) {
-        return httpPath.isEmpty() || httpPath.equals("/");
+    private boolean isRootPath(String requestTarget) {
+        return requestTarget.isEmpty() || requestTarget.equals("/");
     }
 
-    private boolean isLoginPath(String httpPath) {
-        return httpPath.startsWith("/login");
+    private boolean isLoginPath(String requestTarget) {
+        return requestTarget.startsWith("/login");
     }
 
-    private String buildRootResponse() {
+    private boolean isSignupPath(final String requestTarget) {
+        return requestTarget.startsWith("/register");
+    }
+
+    private User getCurrentUser(HttpRequest request) {
+        HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
+        String sessionId = cookie.getJSessionId();
+        if (sessionId != null) {
+            Session session = SessionManager.getSession(sessionId);
+            if (session != null) {
+                return (User) session.getAttribute(USER_ATTRIBUTE);
+            }
+        }
+        return null;
+    }
+
+    private HttpResponse buildRootResponse() {
         String responseBody = "Hello world!";
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
-        return responseBuilder("200", "OK", headers, responseBody);
+        return new HttpResponse("HTTP/1.1", 200, "OK", headers, responseBody);
     }
 
-    private String handleStaticFileRequest(String httpPath) throws IOException {
-        String filePath = httpPath.startsWith("/") ? httpPath.substring(1) : httpPath;
-        
-        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/" + filePath)) {
+    private HttpResponse buildRedirectResponse(String location) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Location", location);
+        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+    }
+
+    private HttpResponse ensureSessionCookie(HttpRequest request, HttpResponse response) {
+        HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
+        if (!cookie.hasJSessionId()) {
+            String newSessionId = UUID.randomUUID().toString();
+            Map<String, String> newHeaders = new HashMap<>(response.headers());
+            newHeaders.put("Set-Cookie", JSESSIONID + "=" + newSessionId);
+            return new HttpResponse(response.version(), response.statusCode(), 
+                    response.reasonPhrase(), newHeaders, response.body());
+        }
+        return response;
+    }
+
+    private HttpResponse handleStaticFileRequest(String requestTarget) throws IOException {
+        String filePath = requestTarget.startsWith("/") ? requestTarget.substring(1) : requestTarget;
+
+        try (InputStream inputStream = HttpResponse.class.getClassLoader().getResourceAsStream("static/" + filePath)) {
             if (inputStream == null) {
                 return buildNotFoundResponse();
             } else {
@@ -111,99 +155,60 @@ public class Http11Processor implements Runnable, Processor {
         }
     }
 
-    private String buildNotFoundResponse() throws IOException {
+    private HttpResponse buildNotFoundResponse() throws IOException {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
-        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/404.html")) {
+        try (InputStream inputStream = HttpResponse.class.getClassLoader().getResourceAsStream("static/404.html")) {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>404 Not Found</h1></body></html>";
-                return responseBuilder("404", "Not Found", headers, responseBody);
+                return new HttpResponse("HTTP/1.1", 404, "Not Found", headers, responseBody);
             } else {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                try (
+                        BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(inputStream, StandardCharsets.UTF_8))
+                ) {
                     String responseBody = reader.lines().collect(Collectors.joining("\n"));
-                    return responseBuilder("404", "Not Found", headers, responseBody);
+                    return new HttpResponse("HTTP/1.1", 404, "Not Found", headers, responseBody);
                 }
             }
         }
     }
 
-    private String buildStaticFileResponse(InputStream inputStream, String filePath) throws IOException {
+    private HttpResponse buildStaticFileResponse(InputStream inputStream, String filePath) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String responseBody = reader.lines().collect(Collectors.joining("\n"));
             responseBody += "\n";
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", getContentType(filePath));
 
-            return responseBuilder("200", "OK", headers, responseBody);
+            return new HttpResponse("HTTP/1.1", 200, "OK", headers, responseBody);
         }
     }
 
-    private String handleLoginRequest(String httpPath) throws IOException {
-        if (httpPath.contains("?")) {
-            Map<String, String> queryParams = parseQueryString(httpPath);
-            String account = queryParams.get("account");
-            String password = queryParams.get("password");
-
-            if (account != null && password != null) {
-                User user = InMemoryUserRepository.findByAccount(account).orElseThrow();
-                if (user.checkPassword(password)) {
-                    log.info("로그인 성공: {}", user);
-                }
-            }
+    private HttpResponse handleLoginRequest(HttpRequest request) {
+        Map<String, String> formData = parseFormBody(request);
+        String account = formData.get("account");
+        String password = formData.get("password");
+        
+        HttpResponse loginResponse = tryAuthenticate(account, password);
+        if (loginResponse != null) {
+            return loginResponse;
         }
 
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "text/html;charset=utf-8");
-
-        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream("static/login.html")) {
-            if (inputStream == null) {
-                String responseBody = "<html><body><h1>Login Page Not Found</h1></body></html>";
-                return responseBuilder("404", "Not Found", headers, responseBody);
-            } else {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-                    String responseBody = reader.lines().collect(Collectors.joining("\n"));
-                    return responseBuilder("200", "OK", headers, responseBody);
-                }
-            }
-        }
+        return buildRedirectResponse(LOGIN_FAILED_PAGE);
     }
 
-    private Map<String, String> parseQueryString(String httpPath) {
-        Map<String, String> params = new HashMap<>();
-
-        int queryStart = httpPath.indexOf("?");
-        if (queryStart == -1) {
-            return params;
-        }
-
-        String queryString = httpPath.substring(queryStart + 1);
-        String[] pairs = queryString.split("&");
-
-        for (String pair : pairs) {
-            String[] keyValue = pair.split("=");
-            if (keyValue.length == 2) {
-                params.put(keyValue[0], keyValue[1]);
-            }
-        }
-
-        return params;
-    }
-
-    private String responseBuilder(String httpStatusCode, String httpStatusMessage, Map<String, String> headers, String responseBody) {
-        StringBuilder response = new StringBuilder();
-
-        response.append("HTTP/1.1").append(" ").append(httpStatusCode).append(" ").append(httpStatusMessage).append("\r\n");
-        if (headers != null && !headers.isEmpty()) {
-            for (Map.Entry<String, String> entry : headers.entrySet()) {
-                response.append(entry.getKey()).append(": ").append(entry.getValue()).append("\r\n");
-            }
-        }
-        response.append("Content-Length: ").append(responseBody.getBytes(StandardCharsets.UTF_8).length).append("\r\n");
-        response.append("\r\n");
-        response.append(responseBody);
-
-        return response.toString();
+    private HttpResponse handleSignupRequest(final HttpRequest request) {
+        Map<String, String> params = parseFormBody(request);
+        String account = params.get("account");
+        String password = params.get("password");
+        String email = params.get("email");
+        User user = new User(account, password, email);
+        InMemoryUserRepository.save(user);
+        
+        String sessionId = createSession(user);
+        return buildLoginSuccessResponse(sessionId);
     }
 
     private String getContentType(String filePath) {
@@ -211,5 +216,55 @@ public class Http11Processor implements Runnable, Processor {
             return "text/css;charset=utf-8";
         }
         return "text/html;charset=utf-8";
+    }
+
+    private Map<String, String> parseFormBody(HttpRequest httpRequest) {
+        String body = httpRequest.body();
+        Map<String, String> formData = new HashMap<>();
+
+        if (body == null || body.isEmpty()) {
+            return formData;
+        }
+
+        String[] pairs = body.split("&");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2) {
+                formData.put(keyValue[0], keyValue[1]);
+            }
+        }
+
+        return formData;
+    }
+
+
+
+    private HttpResponse tryAuthenticate(String account, String password) {
+        if (account != null && password != null) {
+            User user = InMemoryUserRepository.findByAccount(account).orElseThrow();
+            if (user.checkPassword(password)) {
+                String sessionId = createSession(user);
+                
+                log.info("로그인 성공: {}", user);
+                return buildLoginSuccessResponse(sessionId);
+            }
+        }
+        return null;
+    }
+
+    private HttpResponse buildLoginSuccessResponse(String sessionId) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Location", INDEX_PAGE);
+        headers.put("Set-Cookie", JSESSIONID + "=" + sessionId);
+        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+    }
+
+    private String createSession(User user) {
+        String sessionId = UUID.randomUUID().toString();
+        Session session = new Session(sessionId);
+        session.setAttribute(USER_ATTRIBUTE, user);
+        SessionManager.add(session);
+        log.info("세션 생성: sessionId={}, user={}", sessionId, user.getAccount());
+        return sessionId;
     }
 }
