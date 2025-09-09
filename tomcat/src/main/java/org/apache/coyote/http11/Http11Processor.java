@@ -1,8 +1,9 @@
 package org.apache.coyote.http11;
 
-import com.techcourse.db.InMemorySessionRepository;
+import org.apache.catalina.SessionManager;
 import com.techcourse.db.InMemoryUserRepository;
 import com.techcourse.exception.UncheckedServletException;
+import org.apache.catalina.Session;
 import com.techcourse.model.User;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -105,7 +106,10 @@ public class Http11Processor implements Runnable, Processor {
         HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
         String sessionId = cookie.getJSessionId();
         if (sessionId != null) {
-            return InMemorySessionRepository.findBySessionId(sessionId).orElse(null);
+            Session session = SessionManager.getSession(sessionId);
+            if (session != null) {
+                return (User) session.getAttribute("user");
+            }
         }
         return null;
     }
@@ -272,15 +276,10 @@ public class Http11Processor implements Runnable, Processor {
 
     private String createSession(User user) {
         String sessionId = UUID.randomUUID().toString();
-        InMemorySessionRepository.save(sessionId, user);
+        Session session = new Session(sessionId);
+        session.setAttribute("user", user);
+        SessionManager.add(session);
         log.info("세션 생성: sessionId={}, user={}", sessionId, user.getAccount());
         return sessionId;
-    }
-
-    private void invalidateSession(String sessionId) {
-        if (sessionId != null) {
-            InMemorySessionRepository.remove(sessionId);
-            log.info("세션 무효화: sessionId={}", sessionId);
-        }
     }
 }
