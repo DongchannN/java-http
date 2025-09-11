@@ -48,7 +48,7 @@ public class Http11Processor implements Runnable, Processor {
                         new InputStreamReader(inputStream, StandardCharsets.ISO_8859_1))
         ) {
 
-            HttpRequest request = HttpRequest.from(bufferedReader);
+            HttpRequest request = RequestParser.parse(bufferedReader);
             HttpResponse response = processHttpRequest(request);
             String responseString = response.toResponseString();
 
@@ -60,36 +60,36 @@ public class Http11Processor implements Runnable, Processor {
     }
 
     public HttpResponse processHttpRequest(HttpRequest request) throws IOException {
-        String requestTarget = request.requestTarget();
+        String path = request.path();
 
         User currentUser = getCurrentUser(request);
         
-        if (isRootPath(requestTarget)) {
+        if (isRootPath(path)) {
             return buildRootResponse();
-        } else if (isLoginPath(requestTarget)) {
+        } else if (isLoginPath(path)) {
             if (request.method().equals("GET") && currentUser != null) {
                 return buildRedirectResponse(INDEX_PAGE);
             }
             if (request.method().equals("GET")) {
-                return handleStaticFileRequest(requestTarget + ".html");
+                return handleStaticFileRequest(path + ".html");
             } else if (request.method().equals("POST")) {
                 return handleLoginRequest(request);
             } else {
                 return buildNotFoundResponse();
             }
-        } else if (isSignupPath(requestTarget)) {
+        } else if (isSignupPath(path)) {
             if (request.method().equals("GET") && currentUser != null) {
                 return buildRedirectResponse(INDEX_PAGE);
             }
             if (request.method().equals("GET")) {
-                return handleStaticFileRequest(requestTarget + ".html");
+                return handleStaticFileRequest(path + ".html");
             } else if (request.method().equals("POST")) {
                 return handleSignupRequest(request);
             } else {
                 return buildNotFoundResponse();
             }
         } else {
-            HttpResponse response = handleStaticFileRequest(requestTarget);
+            HttpResponse response = handleStaticFileRequest(path);
             return ensureSessionCookie(request, response);
         }
     }
