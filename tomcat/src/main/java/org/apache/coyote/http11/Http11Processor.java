@@ -1,7 +1,5 @@
 package org.apache.coyote.http11;
 
-import com.techcourse.controller.LoginController;
-import com.techcourse.controller.SignupController;
 import org.apache.catalina.controller.Controller;
 import org.apache.catalina.controller.ControllerContainer;
 import org.apache.coyote.Processor;
@@ -20,11 +18,9 @@ public class Http11Processor implements Runnable, Processor {
     private final Socket connection;
     private final ControllerContainer controllerContainer;
 
-    public Http11Processor(final Socket connection) {
+    public Http11Processor(final Socket connection, ControllerContainer controllerContainer) {
         this.connection = connection;
-        this.controllerContainer = new ControllerContainer();
-        controllerContainer.addControllerWithPath("/login", new LoginController());
-        controllerContainer.addControllerWithPath("/register", new SignupController());
+        this.controllerContainer = controllerContainer;
     }
 
     @Override
