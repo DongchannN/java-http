@@ -4,6 +4,8 @@ import org.apache.catalina.SessionManager;
 import com.techcourse.db.InMemoryUserRepository;
 import com.techcourse.exception.UncheckedServletException;
 import org.apache.catalina.Session;
+import org.apache.catalina.controller.ControllerContainer;
+import org.apache.catalina.controller.Controller;
 import com.techcourse.model.User;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -28,9 +30,11 @@ public class Http11Processor implements Runnable, Processor {
     private static final String USER_ATTRIBUTE = "user";
 
     private final Socket connection;
+    private final ControllerContainer controllerContainer;
 
     public Http11Processor(final Socket connection) {
         this.connection = connection;
+        this.controllerContainer = new ControllerContainer();
     }
 
     @Override
@@ -54,19 +58,16 @@ public class Http11Processor implements Runnable, Processor {
 
             outputStream.write(responseString.getBytes(StandardCharsets.UTF_8));
             outputStream.flush();
-        } catch (IOException | UncheckedServletException e) {
+        } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
     }
 
-    public HttpResponse processHttpRequest(HttpRequest request) throws IOException {
+    public HttpResponse processHttpRequest(HttpRequest request) throws Exception {
         String path = request.path();
-
         User currentUser = getCurrentUser(request);
         
-        if (isRootPath(path)) {
-            return buildRootResponse();
-        } else if (isLoginPath(path)) {
+        if (isLoginPath(path)) {
             if (request.method().equals("GET") && currentUser != null) {
                 return buildRedirectResponse(INDEX_PAGE);
             }
@@ -89,14 +90,12 @@ public class Http11Processor implements Runnable, Processor {
                 return buildNotFoundResponse();
             }
         } else {
-            HttpResponse response = handleStaticFileRequest(path);
+            Controller controller = controllerContainer.findController(path);
+            HttpResponse response = controller.service(request);
             return ensureSessionCookie(request, response);
         }
     }
 
-    private boolean isRootPath(String requestTarget) {
-        return requestTarget.isEmpty() || requestTarget.equals("/");
-    }
 
     private boolean isLoginPath(String requestTarget) {
         return requestTarget.startsWith("/login");
@@ -118,12 +117,6 @@ public class Http11Processor implements Runnable, Processor {
         return null;
     }
 
-    private HttpResponse buildRootResponse() {
-        String responseBody = "Hello world!";
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "text/html;charset=utf-8");
-        return new HttpResponse("HTTP/1.1", 200, "OK", headers, responseBody);
-    }
 
     private HttpResponse buildRedirectResponse(String location) {
         Map<String, String> headers = new HashMap<>();
