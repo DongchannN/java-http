@@ -2,23 +2,20 @@ package org.apache.coyote.http11;
 
 import com.techcourse.controller.LoginController;
 import com.techcourse.controller.SignupController;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 import org.apache.catalina.controller.Controller;
 import org.apache.catalina.controller.ControllerContainer;
 import org.apache.coyote.Processor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+
 public class Http11Processor implements Runnable, Processor {
 
     private static final Logger log = LoggerFactory.getLogger(Http11Processor.class);
-    private static final String JSESSIONID = "JSESSIONID";
 
     private final Socket connection;
     private final ControllerContainer controllerContainer;
@@ -60,22 +57,7 @@ public class Http11Processor implements Runnable, Processor {
         String path = request.path();
 
         Controller controller = controllerContainer.findController(path);
-        HttpResponse response = controller.service(request);
-        return ensureSessionCookie(request, response);
-    }
-
-    private HttpResponse ensureSessionCookie(HttpRequest request, HttpResponse response) {
-        HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
-        if (!cookie.hasJSessionId()) {
-            String newSessionId = UUID.randomUUID().toString();
-            Map<String, String> newHeaders = new HashMap<>(response.headers());
-            newHeaders.put("Set-Cookie", JSESSIONID + "=" + newSessionId);
-            return new HttpResponse(
-                    response.version(), response.statusCode(),
-                    response.reasonPhrase(), newHeaders, response.body()
-            );
-        }
-        return response;
+        return controller.service(request);
     }
 
 }
