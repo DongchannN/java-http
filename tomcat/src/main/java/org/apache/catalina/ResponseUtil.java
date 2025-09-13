@@ -1,6 +1,7 @@
 package org.apache.catalina;
 
 import org.apache.coyote.http11.HttpResponse;
+import org.apache.coyote.http11.HttpStatus;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -18,14 +19,26 @@ public class ResponseUtil {
     public static HttpResponse buildRedirectResponse(String location) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Location", location);
-        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+        return new HttpResponse(
+                "HTTP/1.1",
+                HttpStatus.FOUND.getCode(),
+                HttpStatus.FOUND.getReasonPhrase(),
+                headers,
+                ""
+        );
     }
 
     public static HttpResponse buildLoginSuccessResponse(String sessionId, String indexPage) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Location", indexPage);
         headers.put("Set-Cookie", JSESSIONID + "=" + sessionId);
-        return new HttpResponse("HTTP/1.1", 302, "Found", headers, "");
+        return new HttpResponse(
+                "HTTP/1.1",
+                HttpStatus.FOUND.getCode(),
+                HttpStatus.FOUND.getReasonPhrase(),
+                headers,
+                ""
+        );
     }
 
     public static HttpResponse buildNotFoundResponse() throws IOException {
@@ -36,12 +49,24 @@ public class ResponseUtil {
                 .getResourceAsStream("static/404.html")) {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>404 Not Found</h1></body></html>";
-                return new HttpResponse("HTTP/1.1", 404, "Not Found", headers, responseBody);
+                return new HttpResponse(
+                        "HTTP/1.1",
+                        HttpStatus.NOT_FOUND.getCode(),
+                        HttpStatus.NOT_FOUND.getReasonPhrase(),
+                        headers,
+                        responseBody
+                );
             } else {
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                     String responseBody = reader.lines().collect(Collectors.joining("\n"));
-                    return new HttpResponse("HTTP/1.1", 404, "Not Found", headers, responseBody);
+                    return new HttpResponse(
+                            "HTTP/1.1",
+                            HttpStatus.NOT_FOUND.getCode(),
+                            HttpStatus.NOT_FOUND.getReasonPhrase(),
+                            headers,
+                            responseBody
+                    );
                 }
             }
         }
@@ -55,12 +80,24 @@ public class ResponseUtil {
                 .getResourceAsStream("static/405.html")) {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
-                return new HttpResponse("HTTP/1.1", 405, "Method Not Allowed", headers, responseBody);
+                return new HttpResponse(
+                        "HTTP/1.1",
+                        HttpStatus.METHOD_NOT_ALLOWED.getCode(),
+                        HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
+                        headers,
+                        responseBody
+                );
             } else {
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                     String responseBody = reader.lines().collect(Collectors.joining("\n"));
-                    return new HttpResponse("HTTP/1.1", 405, "Method Not Allowed", headers, responseBody);
+                    return new HttpResponse(
+                            "HTTP/1.1",
+                            HttpStatus.METHOD_NOT_ALLOWED.getCode(),
+                            HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
+                            headers,
+                            responseBody
+                    );
                 }
             }
         }

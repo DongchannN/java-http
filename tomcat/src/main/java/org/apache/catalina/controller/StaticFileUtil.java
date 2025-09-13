@@ -2,6 +2,7 @@ package org.apache.catalina.controller;
 
 import org.apache.catalina.ResponseUtil;
 import org.apache.coyote.http11.HttpResponse;
+import org.apache.coyote.http11.HttpStatus;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -31,7 +32,13 @@ public class StaticFileUtil {
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", getContentType(filePath));
 
-            return new HttpResponse("HTTP/1.1", 200, "OK", headers, responseBody);
+            return new HttpResponse(
+                    "HTTP/1.1",
+                    HttpStatus.OK.getCode(),
+                    HttpStatus.OK.getReasonPhrase(),
+                    headers,
+                    responseBody
+            );
         }
     }
 
