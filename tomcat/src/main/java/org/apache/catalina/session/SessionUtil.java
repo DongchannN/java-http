@@ -12,10 +12,11 @@ public class SessionUtil {
 
     private static final Logger log = LoggerFactory.getLogger(SessionUtil.class);
     private static final String USER_ATTRIBUTE = "user";
+    private static final String JSESSIONID = "JSESSIONID";
 
     public static User getCurrentUser(HttpRequest request) {
         HttpCookie cookie = HttpCookie.from(request.headers().get("Cookie"));
-        String sessionId = cookie.getJSessionId();
+        String sessionId = cookie.getValue(JSESSIONID);
         if (sessionId != null) {
             Session session = SessionManager.getSession(sessionId);
             if (session != null) {
