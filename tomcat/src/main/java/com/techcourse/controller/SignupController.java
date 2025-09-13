@@ -5,7 +5,7 @@ import com.techcourse.model.User;
 import java.util.HashMap;
 import org.apache.catalina.controller.AbstractController;
 import org.apache.catalina.session.SessionUtil;
-import org.apache.catalina.controller.StaticFileUtil;
+import org.apache.catalina.controller.StaticFileResponseBuilder;
 import org.apache.catalina.ResponseUtil;
 import org.apache.coyote.http11.HttpRequest;
 import org.apache.coyote.http11.HttpResponse;
@@ -25,7 +25,7 @@ public class SignupController extends AbstractController {
         String path = request.path();
         String filePath = path.startsWith("/") ? path.substring(1) : path;
 
-        return StaticFileUtil.buildStaticFileResponse(filePath + ".html");
+        return StaticFileResponseBuilder.buildStaticFileResponse(filePath + ".html");
     }
 
     @Override

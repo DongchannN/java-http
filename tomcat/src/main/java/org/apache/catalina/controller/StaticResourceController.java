@@ -10,6 +10,6 @@ public class StaticResourceController implements Controller {
         String path = request.path();
         String filePath = path.startsWith("/") ? path.substring(1) : path;
 
-        return StaticFileUtil.buildStaticFileResponse(filePath);
+        return StaticFileResponseBuilder.buildStaticFileResponse(filePath);
     }
 }
