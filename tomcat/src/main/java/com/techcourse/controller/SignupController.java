@@ -20,12 +20,12 @@ public class SignupController extends AbstractController {
     protected HttpResponse doGet(HttpRequest request) throws Exception {
         User currentUser = SessionUtil.getCurrentUser(request);
         if (currentUser != null) {
-            return ResponseUtil.buildRedirectResponse(INDEX_PAGE);
+            return ResponseUtil.buildRedirectResponse(INDEX_PAGE, request.version());
         }
         String path = request.path();
         String filePath = path.startsWith("/") ? path.substring(1) : path;
 
-        return StaticFileResponseBuilder.buildStaticFileResponse(filePath + ".html");
+        return StaticFileResponseBuilder.buildStaticFileResponse(filePath + ".html", request.version());
     }
 
     @Override
@@ -39,7 +39,7 @@ public class SignupController extends AbstractController {
         InMemoryUserRepository.save(user);
 
         String sessionId = SessionUtil.createSession(user);
-        return ResponseUtil.buildLoginSuccessResponse(sessionId, INDEX_PAGE);
+        return ResponseUtil.buildLoginSuccessResponse(sessionId, INDEX_PAGE, "HTTP/1.1");
     }
 
     public Map<String, String> parseFormBody(HttpRequest httpRequest) {

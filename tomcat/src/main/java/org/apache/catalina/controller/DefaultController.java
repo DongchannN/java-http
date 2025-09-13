@@ -16,7 +16,7 @@ public class DefaultController implements Controller {
         headers.put("Content-Type", "text/html;charset=utf-8");
         
         return new HttpResponse(
-                "HTTP/1.1",
+                request.version(),
                 HttpStatus.OK.getCode(),
                 HttpStatus.OK.getReasonPhrase(),
                 headers,

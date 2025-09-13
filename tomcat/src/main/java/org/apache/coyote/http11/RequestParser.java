@@ -7,16 +7,26 @@ import java.util.Map;
 
 public class RequestParser {
 
+    private final BufferedReader bufferedReader;
+
+    public RequestParser(BufferedReader bufferedReader) {
+        this.bufferedReader = bufferedReader;
+    }
+
     public static HttpRequest parse(BufferedReader bufferedReader) throws IOException {
-        String startLine = readRequestLine(bufferedReader);
+        return new RequestParser(bufferedReader).parseRequest();
+    }
+
+    public HttpRequest parseRequest() throws IOException {
+        String startLine = readRequestLine();
         String[] requestLine = parseRequestLine(startLine);
         String method = requestLine[0];
         String requestTarget = requestLine[1];
         String version = requestLine[2];
 
-        Map<String, String> headers = parseHeaders(bufferedReader);
+        Map<String, String> headers = parseHeaders();
 
-        String body = parseBody(bufferedReader, headers);
+        String body = parseBody(headers);
 
         String path = extractPath(requestTarget);
         Map<String, String> queryParams = parseQueryString(requestTarget);
@@ -31,15 +41,15 @@ public class RequestParser {
         );
     }
 
-    private static String readRequestLine(BufferedReader bufferedReader) throws IOException {
-        String startLine = bufferedReader.readLine();
+    private String readRequestLine() throws IOException {
+        String startLine = this.bufferedReader.readLine();
         if (startLine == null || startLine.trim().isEmpty()) {
             throw new IllegalArgumentException("Invalid request: empty start line");
         }
         return startLine;
     }
 
-    private static String[] parseRequestLine(String startLine) {
+    private String[] parseRequestLine(String startLine) {
         String[] parts = startLine.split(" ", 3);
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid HTTP request format: " + startLine);
@@ -48,10 +58,10 @@ public class RequestParser {
         return parts;
     }
 
-    private static Map<String, String> parseHeaders(BufferedReader bufferedReader) throws IOException {
+    private Map<String, String> parseHeaders() throws IOException {
         Map<String, String> headers = new HashMap<>();
         String line;
-        while ((line = bufferedReader.readLine()) != null && !line.isEmpty()) {
+        while ((line = this.bufferedReader.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex > 0) {
                 String key = line.substring(0, colonIndex).trim();
@@ -62,7 +72,7 @@ public class RequestParser {
         return headers;
     }
 
-    private static String parseBody(BufferedReader bufferedReader, Map<String, String> headers) throws IOException {
+    private String parseBody(Map<String, String> headers) throws IOException {
         String contentLengthHeader = headers.get("Content-Length");
         if (contentLengthHeader == null || contentLengthHeader.isEmpty()) {
             return "";
@@ -78,7 +88,7 @@ public class RequestParser {
             int totalRead = 0;
 
             while (totalRead < contentLength) {
-                int read = bufferedReader.read(buffer, totalRead, contentLength - totalRead);
+                int read = this.bufferedReader.read(buffer, totalRead, contentLength - totalRead);
                 if (read == -1) {
                     break;
                 }
@@ -91,7 +101,7 @@ public class RequestParser {
         }
     }
 
-    private static String extractPath(String requestTarget) {
+    private String extractPath(String requestTarget) {
         int queryStart = requestTarget.indexOf("?");
         if (queryStart == -1) {
             return requestTarget;
@@ -99,7 +109,7 @@ public class RequestParser {
         return requestTarget.substring(0, queryStart);
     }
 
-    private static Map<String, String> parseQueryString(String requestTarget) {
+    private Map<String, String> parseQueryString(String requestTarget) {
         Map<String, String> params = new HashMap<>();
 
         int queryStart = requestTarget.indexOf("?");

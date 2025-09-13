@@ -13,14 +13,14 @@ public class StaticFileResponseBuilder {
 
     public static final String STATIC_FILE_PATH = "static/";
 
-    public static HttpResponse buildStaticFileResponse(String filePath) throws IOException {
+    public static HttpResponse buildStaticFileResponse(String filePath, String httpVersion) throws IOException {
         InputStream inputStream = StaticFileResponseBuilder.class.getClassLoader().getResourceAsStream(STATIC_FILE_PATH + filePath);
         if (inputStream == null) {
-            return ResponseUtil.buildNotFoundResponse();
+            return ResponseUtil.buildNotFoundResponse(httpVersion);
         }
 
         String content = StaticFileReader.readFile(inputStream);
-        return buildResponse(content, filePath);
+        return buildResponse(content, filePath, httpVersion);
     }
 
     private static final Map<String, String> CONTENT_TYPES = Map.of(
@@ -31,12 +31,12 @@ public class StaticFileResponseBuilder {
 
     private static final String DEFAULT_CONTENT_TYPE = "text/plain;charset=utf-8";
 
-    public static HttpResponse buildResponse(String content, String filePath) {
+    public static HttpResponse buildResponse(String content, String filePath, String httpVersion) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", getContentType(filePath));
 
         return new HttpResponse(
-                "HTTP/1.1",
+                httpVersion,
                 HttpStatus.OK.getCode(),
                 HttpStatus.OK.getReasonPhrase(),
                 headers,

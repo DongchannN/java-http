@@ -16,7 +16,7 @@ public abstract class AbstractController implements Controller {
                 return doPost(request);
             }
             default -> {
-                return ResponseUtil.buildMethodNotAllowedResponse();
+                return ResponseUtil.buildMethodNotAllowedResponse(request.version());
             }
         }
     }

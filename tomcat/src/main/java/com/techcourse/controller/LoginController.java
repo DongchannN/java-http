@@ -24,12 +24,12 @@ public class LoginController extends AbstractController {
     protected HttpResponse doGet(HttpRequest request) throws Exception {
         User currentUser = SessionUtil.getCurrentUser(request);
         if (currentUser != null) {
-            return ResponseUtil.buildRedirectResponse(INDEX_PAGE);
+            return ResponseUtil.buildRedirectResponse(INDEX_PAGE, request.version());
         }
         String path = request.path();
         String filePath = path.startsWith("/") ? path.substring(1) : path;
         
-        return StaticFileResponseBuilder.buildStaticFileResponse(filePath + ".html");
+        return StaticFileResponseBuilder.buildStaticFileResponse(filePath + ".html", request.version());
     }
 
     @Override
@@ -43,7 +43,7 @@ public class LoginController extends AbstractController {
             return loginResponse;
         }
 
-        return ResponseUtil.buildRedirectResponse(LOGIN_FAILED_PAGE);
+        return ResponseUtil.buildRedirectResponse(LOGIN_FAILED_PAGE, "HTTP/1.1");
     }
 
     private HttpResponse tryAuthenticate(String account, String password) {
@@ -53,7 +53,7 @@ public class LoginController extends AbstractController {
                 String sessionId = SessionUtil.createSession(user);
 
                 log.info("로그인 성공: {}", user);
-                return ResponseUtil.buildLoginSuccessResponse(sessionId, INDEX_PAGE);
+                return ResponseUtil.buildLoginSuccessResponse(sessionId, INDEX_PAGE, "HTTP/1.1");
             }
         }
         return null;

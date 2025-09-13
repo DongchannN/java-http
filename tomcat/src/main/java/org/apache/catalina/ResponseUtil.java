@@ -16,11 +16,11 @@ public class ResponseUtil {
 
     private static final String JSESSIONID = "JSESSIONID";
 
-    public static HttpResponse buildRedirectResponse(String location) {
+    public static HttpResponse buildRedirectResponse(String location, String httpVersion) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Location", location);
         return new HttpResponse(
-                "HTTP/1.1",
+                httpVersion,
                 HttpStatus.FOUND.getCode(),
                 HttpStatus.FOUND.getReasonPhrase(),
                 headers,
@@ -28,12 +28,12 @@ public class ResponseUtil {
         );
     }
 
-    public static HttpResponse buildLoginSuccessResponse(String sessionId, String indexPage) {
+    public static HttpResponse buildLoginSuccessResponse(String sessionId, String indexPage, String httpVersion) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Location", indexPage);
         headers.put("Set-Cookie", JSESSIONID + "=" + sessionId);
         return new HttpResponse(
-                "HTTP/1.1",
+                httpVersion,
                 HttpStatus.FOUND.getCode(),
                 HttpStatus.FOUND.getReasonPhrase(),
                 headers,
@@ -41,7 +41,7 @@ public class ResponseUtil {
         );
     }
 
-    public static HttpResponse buildNotFoundResponse() throws IOException {
+    public static HttpResponse buildNotFoundResponse(String httpVersion) throws IOException {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
@@ -50,7 +50,7 @@ public class ResponseUtil {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>404 Not Found</h1></body></html>";
                 return new HttpResponse(
-                        "HTTP/1.1",
+                        httpVersion,
                         HttpStatus.NOT_FOUND.getCode(),
                         HttpStatus.NOT_FOUND.getReasonPhrase(),
                         headers,
@@ -72,7 +72,7 @@ public class ResponseUtil {
         }
     }
 
-    public static HttpResponse buildMethodNotAllowedResponse() throws IOException {
+    public static HttpResponse buildMethodNotAllowedResponse(String httpVersion) throws IOException {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/html;charset=utf-8");
 
@@ -81,7 +81,7 @@ public class ResponseUtil {
             if (inputStream == null) {
                 String responseBody = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
                 return new HttpResponse(
-                        "HTTP/1.1",
+                        httpVersion,
                         HttpStatus.METHOD_NOT_ALLOWED.getCode(),
                         HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
                         headers,
