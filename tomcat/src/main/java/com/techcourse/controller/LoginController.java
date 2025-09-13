@@ -17,14 +17,14 @@ import java.util.Map;
 public class LoginController extends AbstractController {
 
     private static final Logger log = LoggerFactory.getLogger(LoginController.class);
-    private static final String INDEX_PAGE = "/index.html";
+    private static final String MAIN_PAGE = "/dashboard.html";
     private static final String LOGIN_FAILED_PAGE = "/401.html";
 
     @Override
     protected HttpResponse doGet(HttpRequest request) throws Exception {
         User currentUser = SessionUtil.getCurrentUser(request);
         if (currentUser != null) {
-            return ResponseUtil.buildRedirectResponse(INDEX_PAGE, request.version());
+            return ResponseUtil.buildRedirectResponse(MAIN_PAGE, request.version());
         }
         String path = request.path();
         String filePath = path.startsWith("/") ? path.substring(1) : path;
@@ -53,7 +53,7 @@ public class LoginController extends AbstractController {
                 String sessionId = SessionUtil.createSession(user);
 
                 log.info("로그인 성공: {}", user);
-                return ResponseUtil.buildLoginSuccessResponse(sessionId, INDEX_PAGE, "HTTP/1.1");
+                return ResponseUtil.buildLoginSuccessResponse(sessionId, MAIN_PAGE, "HTTP/1.1");
             }
         }
         return null;
